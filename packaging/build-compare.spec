@@ -1,7 +1,7 @@
 #
 # spec file for package build-compare
 #
-# Copyright (c) 2012 SUSE LINUX Products GmbH, Nuernberg, Germany.
+# Copyright (c) 2014 SUSE LINUX Products GmbH, Nuernberg, Germany.
 #
 # All modifications and additions to the file contributed by third parties
 # remain the property of their copyright owners, unless otherwise agreed
@@ -20,7 +20,7 @@ Name:           build-compare
 Summary:        Build Result Compare Script
 License:        GPL-2.0+
 Group:          Development/Tools/Building
-Version:        2012.01.26
+Version:        2014.11.25
 Release:        0
 Source1:        COPYING
 Source2:        same-build-result.sh
@@ -37,8 +37,7 @@ to a former build.
 
 
 %prep
-mkdir $RPM_BUILD_DIR/%name-%version
-%setup -T 0 -D
+%setup -q -c -T
 cp %{SOURCE1001} .
 
 %build
