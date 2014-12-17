@@ -24,6 +24,7 @@ source $FUNCTIONS
 
 oldrpm=`readlink -f $1`
 newrpm=`readlink -f $2`
+rename_script=`mktemp`
 
 if test ! -f $oldrpm; then
     echo "can't open $oldrpm"
@@ -96,17 +97,24 @@ filter_disasm()
    sed -e 's/^ *[0-9a-f]\+://' -e 's/\$0x[0-9a-f]\+/$something/' -e 's/callq *[0-9a-f]\+/callq /' -e 's/# *[0-9a-f]\+/#  /' -e 's/\(0x\)\?[0-9a-f]\+(/offset(/' -e 's/[0-9a-f]\+ </</' -e 's/^<\(.*\)>:/\1:/' -e 's/<\(.*\)+0x[0-9a-f]\+>/<\1 + ofs>/' 
 }
 
-cmp_spec $1 $2
+cmp_spec $rename_script
 RES=$?
 case $RES in
   0)
-     exit 0
+     echo "RPM meta information is identical"
+     if test -z "$check_all"; then
+        exit 0
+     fi
      ;;
   1)
      echo "RPM meta information is different"
-     exit 1
+     if test -z "$check_all"; then
+        exit 1
+     fi
      ;;
   2)
+     echo "RPM file checksum differs."
+     RES=0
      ;;
   *)
      echo "Wrong exit code!"
@@ -118,9 +126,11 @@ file1=`mktemp`
 file2=`mktemp`
 
 dir=`mktemp -d`
+echo "Extracting packages"
 unrpm $oldrpm $dir/old
 unrpm $newrpm $dir/new
 cd $dir
+bash $rename_script
 
 dfile=`mktemp`
 
@@ -136,8 +146,87 @@ diff_two_files()
   return 0
 }
 
+
+strip_numbered_anchors()
+{
+  # Remove numbered anchors on Docbook / HTML files.
+  # This should be save since we remove them from old and new files.
+  # A trailing </a> or </div> tag will stay also on both files.
+  for f in old/$file new/$file; do
+     sed -i -e 's%<[ ]*a[ ]\+name[^<]*[0-9]\+[^<]*%%g' \
+     -e 's%<[ ]*a[ ]\+href[^<]*#[^<]*[0-9]\+[^<]*%%g' \
+     -e 's%<[^<]*id="ftn\.[^<]*[0-9]\+[^<]*%%g' $f
+  done
+}
+
+
+check_compressed_file()
+{
+  local file=$1
+  local ext=$2
+  local tmpdir=`mktemp -d`
+  local ftype
+  local ret=0
+  echo "$ext file with odd filename: $file"
+  if test -n "$tmpdir"; then
+    mkdir $tmpdir/{old,new}
+    cp --parents --dereference old/$file $tmpdir/
+    cp --parents --dereference new/$file $tmpdir/
+    if pushd $tmpdir > /dev/null ; then
+      case "$ext" in
+        bz2)
+          mv old/$file{,.bz2}
+          mv new/$file{,.bz2}
+          bzip2 -d old/$file.bz2
+          bzip2 -d new/$file.bz2
+          ;;
+        gzip)
+          mv old/$file{,.gz}
+          mv new/$file{,.gz}
+          gzip -d old/$file.gz
+          gzip -d new/$file.gz
+          ;;
+        xz)
+          mv old/$file{,.xz}
+          mv new/$file{,.xz}
+          xz -d old/$file.xz
+          xz -d new/$file.xz
+          ;;
+      esac
+      ftype=`/usr/bin/file old/$file | cut -d: -f2-`
+      case $ftype in
+        *POSIX\ tar\ archive)
+          echo "$ext content is: $ftype"
+          mv old/$file{,.tar}
+          mv new/$file{,.tar}
+          if ! check_single_file ${file}.tar; then
+            ret=1
+          fi
+          ;;
+        *ASCII\ cpio\ archive\ *)
+          echo "$ext content is: $ftype"
+          mv old/$file{,.cpio}
+          mv new/$file{,.cpio}
+          if ! check_single_file ${file}.cpio; then
+            ret=1
+          fi
+          ;;
+        *)
+          echo "unhandled $ext content: $ftype"
+          if ! diff_two_files; then
+            ret=1
+          fi
+          ;;
+      esac
+      popd > /dev/null
+    fi
+    rm -rf "$tmpdir"
+  fi
+  return $ret
+}
+
 check_single_file()
-{ 
+{
   local file="$1"
   case $file in
     *.spec)
@@ -164,6 +253,26 @@ check_single_file()
           fi
        done
        return 0
+       ;;
+    *.cpio)
+       flist=`cpio --quiet --list --force-local < "new/$file"`
+       pwd=$PWD
+       fdir=`dirname $file`
+       cd old/$fdir
+       cpio --quiet --extract --force-local < "${file##*/}"
+       cd $pwd/new/$fdir
+       cpio --quiet --extract --force-local < "${file##*/}"
+       cd $pwd
+       local ret=0
+       for f in $flist; do
+         if ! check_single_file $fdir/$f; then
+           ret=1
+           if test -z "$check_all"; then
+             break
+           fi
+         fi
+       done
+       return $ret
        ;;
     *.tar|*.tar.bz2|*.tar.gz|*.tgz|*.tbz2)
        flist=`tar tf new/$file`
@@ -267,9 +376,11 @@ check_single_file()
 	 # Generated on Sat Aug 14 2010 16:49:48 for libssh
 	 sed -i -e 's|Generated on ... ... [0-9]* 20[0-9][0-9] [0-9]*:[0-9][0-9]:[0-9][0-9] for |Generated on Mon May 10 20:45:00 2010 for |' $f
        done
+       strip_numbered_anchors
        ;;
      /usr/share/javadoc/*.html |\
      /usr/share/javadoc/*/*.html|/usr/share/javadoc/*/*/*.html)
+       strip_numbered_anchors
        # There are more timestamps in html, so far we handle only some primitive versions.
        for f in old/$file new/$file; do
          # Javadoc:
@@ -283,7 +394,7 @@ check_single_file()
 	 # deprecated-list is randomly ordered, sort it for comparison
 	 case $f in
 	   */deprecated-list.html)
-	     sort -o $f $f 
+	     sort -o $f $f
 	     ;;
 	 esac
        done
@@ -369,13 +480,7 @@ check_single_file()
      /usr/share/doc/kde/HTML/*/*/index.cache|/usr/share/doc/kde/HTML/*/*/*/index.cache|\
      /usr/share/gtk-doc/html/*/*.html|/usr/share/gtk-doc/html/*/*.devhelp2)
        # various kde and gtk packages
-       for f in old/$file new/$file; do
-	  sed -i -e 's%name="id[0-9]*"\([> ]\)%name="id424242"\1%g' $f
-	  sed -i -e 's%name="[a-z]*\.id[0-9]*"%name="ftn.id111111"%g' $f
-	  sed -i -e 's%\.html#id[0-9]*"\(/\)\?>%.html#id424242"\1>%g' $f
-	  sed -i -e 's%href="#\([a-z]*\.\)\?id[0-9]*"\([> ]\)%href="#\1id0000000"\2%g' $f
-	  sed -i -e 's%id="\([a-z]*\.\)\?id[0-9]*"\([> ]\)%id="\1id0000000"\2%g' $f
-       done
+       strip_numbered_anchors
        ;;
     */created.rid)
        # ruby documentation
@@ -389,6 +494,7 @@ check_single_file()
        for f in old/$file new/$file; do
           sed -i -e 's%<td>[A-Z][a-z][a-z] [A-Z][a-z][a-z] [0-9]\+ [0-9]\+:[0-9]\+:[0-9]\+ +0000 201[0-9]</td>%<td>Mon Sep 20 19:02:43 +0000 2010</td>%g' $f
        done
+       strip_numbered_anchors
        ;;
     */Linux*Env.Set.sh)
        # LibreOffice files, contains:
@@ -400,6 +506,21 @@ check_single_file()
     /usr/lib/libreoffice/solver/inc/*/deliver.log)
        # LibreOffice log file
       echo "Ignore $file"
+      return 0
+      ;;
+    /var/adm/update-messages/*|/var/adm/update-scripts/*)
+      # encode version-release inside
+      oldfn=`echo "$file"|sed -e s/-$release2/-$release1/;`
+
+      # fetchmsttfonts embeds the release number in the update shell script.
+      echo sed -i -e "s/-$release1/-$release2/g;" "old/$oldfn"
+      sed -i -e "s/-$release1/-$release2/g;" "old/$oldfn"
+
+      if ! diff -u old/$oldfn new/$file; then
+           echo "$oldfn is not same as $file"
+           return 1
+      fi
+      echo "$file and $oldfn are same"
       return 0
       ;;
     *pdf)
@@ -443,7 +564,7 @@ check_single_file()
          return 1
        fi
        ;;
-    *ELF*executable*|*ELF*LSB\ shared\ object*)
+    *ELF*executable*|*ELF*[LM]SB\ shared\ object*)
        objdump -d --no-show-raw-insn old/$file | filter_disasm > $file1
        if ! test -s $file1; then
          # objdump has no idea how to handle it
@@ -460,15 +581,20 @@ check_single_file()
           head -n 200 $dfile
           return 1
        fi
-       objdump -s old/$file > $file1
-       sed -i -e "s,old/,," $file1
-       objdump -s new/$file > $file2
-       sed -i -e "s,new/,," $file2
+       echo "" >$file1
+       echo "" >$file2
+       # Don't compare .build-id and .gnu_debuglink sections
+       sections="$(objdump -s new/$file | grep "Contents of section .*:" | sed -r "s,.* (.*):,\1,g" | grep -v -e "\.build-id" -e "\.gnu_debuglink" | tr "\n" " ")"
+       for section in $sections; do
+          objdump -s -j $section old/$file | sed "s,old/,," >> $file1
+          objdump -s -j $section new/$file | sed "s,new/,," >> $file2
+       done
        if ! diff -u $file1 $file2 > $dfile; then
           echo "$file differs in ELF sections"
           head -n 200 $dfile
        else
-          echo "WARNING: no idea about $file"
+          echo "$file: only difference was in build-id or gnu_debuglink, GOOD."
+          return 0
        fi
        return 1
        ;;
@@ -482,6 +608,29 @@ check_single_file()
      *directory)
        # tar might package directories - ignore them here
        return 0
+       ;;
+     *bzip2\ compressed\ data*)
+       if ! check_compressed_file "$file" "bz2"; then
+           return 1
+       fi
+       ;;
+     *gzip\ compressed\ data*)
+       if ! check_compressed_file "$file" "gzip"; then
+           return 1
+       fi
+       ;;
+     *XZ\ compressed\ data*)
+       if ! check_compressed_file "$file" "xz"; then
+           return 1
+       fi
+       ;;
+     *symbolic\ link\ to\ *)
+       readlink "old/$file" > $file1
+       readlink "new/$file" > $file2
+       if ! diff -u $file1 $file2; then
+         echo "symlink target for $file differs"
+         return 1
+       fi
        ;;
      *)
        if ! diff_two_files; then
@@ -501,7 +650,8 @@ if [ ! -d /proc/self/ ]; then
   PROC_MOUNTED=1
 fi
 
-ret=0
+# preserve cmp_spec result for check_all runs
+ret=$RES
 for file in $files; do
    if ! check_single_file $file; then
        ret=1
@@ -516,6 +666,9 @@ if [ "$PROC_MOUNTED" -eq "1" ]; then
   umount /proc
 fi
 
-rm $file1 $file2 $dfile
+rm $file1 $file2 $dfile $rename_script
 rm -r $dir
+if test "$ret" = 0; then
+     echo "RPM content is identical"
+fi
 exit $ret

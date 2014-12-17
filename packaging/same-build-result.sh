@@ -64,8 +64,8 @@ NEWRPMS=($(find $NEWDIRS -type f -name \*rpm -a ! -name \*src.rpm -a ! -name \*.
 
 # Get release from first RPM and keep for rpmlint check
 # Remember to quote the "." for future regexes
-release1=`rpm -qp --nodigest --nosignature --qf "%{RELEASE}" "${OLDRPMS[0]}"|sed -e 's/\./\\./g'`
-release2=`rpm -qp --nodigest --nosignature --qf "%{RELEASE}" "${NEWRPMS[0]}"|sed -e 's/\./\\./g'`
+release1=$(rpm -qp --nodigest --nosignature --qf "%{RELEASE}" "${OLDRPMS[0]}"|sed -e 's/\./\\./g')
+release2=$(rpm -qp --nodigest --nosignature --qf "%{RELEASE}" "${NEWRPMS[0]}"|sed -e 's/\./\\./g')
 
 SUCCESS=1
 rpmqp='rpm -qp --qf %{NAME} --nodigest --nosignature '
@@ -79,10 +79,17 @@ for opac in ${OLDRPMS[*]}; do
      echo "names differ: $oname $nname"
      exit 1
   fi
-  bash $CMPSCRIPT "$opac" "$npac" || SUCCESS=0
-  if test $SUCCESS -eq 0 -a -z "$check_all"; then
-     exit 1
-  fi
+  case "$opac" in
+    *debuginfo*)
+     echo "skipping -debuginfo package"
+    ;;
+    *)
+     bash $CMPSCRIPT "$opac" "$npac" || SUCCESS=0
+     if test $SUCCESS -eq 0 -a -z "$check_all"; then
+        exit 1
+     fi
+    ;;
+  esac
 done
 
 if [ -n "${NEWRPMS[0]}" ]; then
@@ -103,7 +110,7 @@ if test -e $OLDDIR/rpmlint.log -a -e $OTHERDIR/rpmlint.log; then
   sort -u $OTHERDIR/rpmlint.log|sed -e "s,$release2,@RELEASE@,g" -e "s|/tmp/rpmlint\..*spec|.spec|g"  > $file2
   if ! cmp -s $file1 $file2; then
     echo "rpmlint.log files differ:"
-    diff -u $OLDDIR/rpmlint.log $OTHERDIR/rpmlint.log |head -n 20
+    diff -u $file1 $file2 |head -n 20
     SUCCESS=0
   fi
   rm $file1 $file2
