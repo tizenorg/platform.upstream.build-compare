@@ -1,7 +1,7 @@
 #
 # spec file for package build-compare
 #
-# Copyright (c) 2014 SUSE LINUX Products GmbH, Nuernberg, Germany.
+# Copyright (c) 2015 SUSE LINUX GmbH, Nuernberg, Germany.
 #
 # All modifications and additions to the file contributed by third parties
 # remain the property of their copyright owners, unless otherwise agreed
@@ -20,16 +20,18 @@ Name:           build-compare
 Summary:        Build Result Compare Script
 License:        GPL-2.0+
 Group:          Development/Tools/Building
-Version:        2014.11.25
+Url:            https://github.com/openSUSE/build-compare
+Version:        2015.04.28
 Release:        0
 Source1:        COPYING
 Source2:        same-build-result.sh
-Source3:        rpm-check.sh
+Source3:        pkg-diff.sh
 Source4:        functions.sh
 Source5:        srpm-check.sh
 Source1001: 	build-compare.manifest
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build
 BuildArch:      noarch
+#!BuildIgnore:  build-compare
 
 %description
 This package contains scripts to find out if the build result differs

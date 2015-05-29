@@ -15,26 +15,34 @@ check_header()
    $RPM --qf "$QF" "$1"
 }
 
-# Trim release string:
+# Trim version-release string:
 # - it is used as direntry below certain paths
 # - it is assigned to some variable in scripts, at the end of a line
 # - it is used in PROVIDES, at the end of a line
+# Trim name-version-release string:
+# - it is used in update-scripts which are called by libzypp
 function trim_release_old()
 {
-  sed -e "/\(\/boot\|\/lib\/modules\|\/lib\/firmware\|\/usr\/src\|$release_old\$\)/{s,-$release_old_regex_l,-@RELEASE_LONG@,g;s,-$release_old_regex_s,-@RELEASE_SHORT@,g}"
+  sed -e "
+  /\(\/boot\|\/lib\/modules\|\/lib\/firmware\|\/usr\/src\|$version_release_old_regex_l\$\)/{s,$version_release_old_regex_l,@VERSION@-@RELEASE_LONG@,g;s,$version_release_old_regex_s,@VERSION@-@RELEASE_SHORT@,g}
+  s/\(\/var\/adm\/update-scripts\/\)${name_ver_rel_old_regex_l}\([^[:blank:]]\+\)/\1@NAME_VER_REL@\2/g
+  "
 }
 function trim_release_new()
 {
-  sed -e "/\(\/boot\|\/lib\/modules\|\/lib\/firmware\|\/usr\/src\|$release_new\$\)/{s,-$release_new_regex_l,-@RELEASE_LONG@,g;s,-$release_new_regex_s,-@RELEASE_SHORT@,g}"
+  sed -e "
+  /\(\/boot\|\/lib\/modules\|\/lib\/firmware\|\/usr\/src\|$version_release_new_regex_l\$\)/{s,$version_release_new_regex_l,@VERSION@-@RELEASE_LONG@,g;s,$version_release_new_regex_s,@VERSION@-@RELEASE_SHORT@,g}
+  s/\(\/var\/adm\/update-scripts\/\)${name_ver_rel_new_regex_l}\([^[:blank:]]\+\)/\1@NAME_VER_REL@\2/g
+  "
 }
 # Get single directory or filename with long or short release string
 function grep_release_old()
 {
-  grep -E "(/boot|/lib/modules|/lib/firmware|/usr/src)/[^/]+(-${release_old_regex_l}(\$|[^/]+\$)|-${release_old_regex_s}(\$|[^/]+\$))"
+  grep -E "(/boot|/lib/modules|/lib/firmware|/usr/src)/[^/]+(${version_release_old_regex_l}(\$|[^/]+\$)|${version_release_old_regex_s}(\$|[^/]+\$))"
 }
 function grep_release_new()
 {
-  grep -E "(/boot|/lib/modules|/lib/firmware|/usr/src)/[^/]+(-${release_new_regex_l}(\$|[^/]+\$)|-${release_new_regex_s}(\$|[^/]+\$))"
+  grep -E "(/boot|/lib/modules|/lib/firmware|/usr/src)/[^/]+(${version_release_new_regex_l}(\$|[^/]+\$)|${version_release_new_regex_s}(\$|[^/]+\$))"
 }
 
 function check_provides()
@@ -49,19 +57,35 @@ function check_provides()
   check_header "$pkg"
 }
 
-#usage unrpm <file> $dir
-# Unpack rpm files in directory $dir
-# like /usr/bin/unrpm - just for one file and with no options
-function unrpm()
+#usage unpackage <file> $dir
+# Unpack files in directory $dir
+# like /usr/bin/unpackage - just for one file and with no options
+function unpackage()
 {
     local file
     local dir
     file=$1
     dir=$2
-    CPIO_OPTS="--extract --unconditional --preserve-modification-time --make-directories --quiet"
     mkdir -p $dir
     pushd $dir 1>/dev/null
-    rpm2cpio $file | cpio ${CPIO_OPTS}
+    case $file in
+        *.bz2)
+            bzip2 -d $file
+            ;;
+        *.gz)
+            gzip -d $file
+            ;;
+        *.xz)
+            xz -d $file
+            ;;
+        *.tar|*.tar.bz2|*.tar.gz|*.tgz|*.tbz2)
+            tar xf $file
+            ;;
+        *.rpm)
+            CPIO_OPTS="--extract --unconditional --preserve-modification-time --make-directories --quiet"
+            rpm2cpio $file | cpio ${CPIO_OPTS}
+            ;;
+    esac
     popd 1>/dev/null
 }
 
@@ -77,6 +101,8 @@ function cmp_spec ()
     local file1 file2
     local f
     local sh=$1
+    local oldrpm=$2
+    local newrpm=$3
 
     QF="%{NAME}"
     
@@ -117,19 +143,23 @@ function cmp_spec ()
     fi
     
     # Remember to quote the . which is in release
-    release_old=$($RPM --qf "%{RELEASE}" "$oldrpm")
-    release_new=$($RPM --qf "%{RELEASE}" "$newrpm")
+    version_release_old=$($RPM --qf "%{VERSION}-%{RELEASE}" "$oldrpm")
+    version_release_new=$($RPM --qf "%{VERSION}-%{RELEASE}" "$newrpm")
+    name_ver_rel_old=$($RPM --qf "%{NAME}-%{VERSION}-%{RELEASE}" "$oldrpm")
+    name_ver_rel_new=$($RPM --qf "%{NAME}-%{VERSION}-%{RELEASE}" "$newrpm")
     # Short version without B_CNT
-    release_old_regex_s=${release_old%.*}
-    release_old_regex_s=${release_old_regex_s//./\\.}
-    release_new_regex_s=${release_new%.*}
-    release_new_regex_s=${release_new_regex_s//./\\.}
+    version_release_old_regex_s=${version_release_old%.*}
+    version_release_old_regex_s=${version_release_old_regex_s//./\\.}
+    version_release_new_regex_s=${version_release_new%.*}
+    version_release_new_regex_s=${version_release_new_regex_s//./\\.}
     # Long version with B_CNT
-    release_old_regex_l=${release_old//./\\.}
-    release_new_regex_l=${release_new//./\\.}
+    version_release_old_regex_l=${version_release_old//./\\.}
+    version_release_new_regex_l=${version_release_new//./\\.}
+    name_ver_rel_old_regex_l=${name_ver_rel_old//./\\.}
+    name_ver_rel_new_regex_l=${name_ver_rel_new//./\\.}
     # This might happen when?!
     echo "comparing RELEASE"
-    if [ "${release_old%.*}" != "${release_new%.*}" ] ; then
+    if [ "${version_release_old%.*}" != "${version_release_new%.*}" ] ; then
       case $($RPM --qf '%{NAME}' "$newrpm") in
         kernel-*)
           # Make sure all kernel packages have the same %RELEASE
@@ -225,3 +255,4 @@ function cmp_spec ()
     rm $file1 $file2
     return $RES
 }
+# vim: tw=666 ts=2 shiftwidth=2 et

@@ -7,11 +7,11 @@
 # Enhanced by Andreas Jaeger <aj@suse.de>
 #
 # The script decides if the new build differes from the former one,
-# using rpm-check.sh.
+# using pkg-diff.sh.
 # The script is called as part of the build process as:
 # /usr/lib/build/same-build-result.sh /.build.oldpackages /usr/src/packages/RPMS /usr/src/packages/SRPMS
 
-CMPSCRIPT=${0%/*}/rpm-check.sh
+CMPSCRIPT=${0%/*}/pkg-diff.sh
 SCMPSCRIPT=${0%/*}/srpm-check.sh
 
 check_all=1
@@ -62,10 +62,10 @@ bash $SCMPSCRIPT "$osrpm" "$nsrpm" || exit 1
 OLDRPMS=($(find "$OLDDIR" -type f -name \*rpm -a ! -name \*src.rpm  -a ! -name \*.delta.rpm|sort|grep -v -- -32bit-|grep -v -- -64bit-|grep -v -- '-x86-.*\.ia64\.rpm'))
 NEWRPMS=($(find $NEWDIRS -type f -name \*rpm -a ! -name \*src.rpm -a ! -name \*.delta.rpm|sort --field-separator=/ --key=7|grep -v -- -32bit-|grep -v -- -64bit-|grep -v -- '-x86-.*\.ia64\.rpm'))
 
-# Get release from first RPM and keep for rpmlint check
+# Get version-release from first RPM and keep for rpmlint check
 # Remember to quote the "." for future regexes
-release1=$(rpm -qp --nodigest --nosignature --qf "%{RELEASE}" "${OLDRPMS[0]}"|sed -e 's/\./\\./g')
-release2=$(rpm -qp --nodigest --nosignature --qf "%{RELEASE}" "${NEWRPMS[0]}"|sed -e 's/\./\\./g')
+ver_rel1=$(rpm -qp --nodigest --nosignature --qf "%{VERSION}-%{RELEASE}" "${OLDRPMS[0]}"|sed -e 's/\./\\./g')
+ver_rel2=$(rpm -qp --nodigest --nosignature --qf "%{VERSION}-%{RELEASE}" "${NEWRPMS[0]}"|sed -e 's/\./\\./g')
 
 SUCCESS=1
 rpmqp='rpm -qp --qf %{NAME} --nodigest --nosignature '
@@ -76,18 +76,19 @@ for opac in ${OLDRPMS[*]}; do
   oname=`$rpmqp $opac`
   nname=`$rpmqp $npac`
   if test "$oname" != "$nname"; then
-     echo "names differ: $oname $nname"
-     exit 1
+    echo "names differ: $oname $nname"
+    exit 1
   fi
   case "$opac" in
     *debuginfo*)
-     echo "skipping -debuginfo package"
+      echo "skipping -debuginfo package"
     ;;
     *)
-     bash $CMPSCRIPT "$opac" "$npac" || SUCCESS=0
-     if test $SUCCESS -eq 0 -a -z "$check_all"; then
+      bash $CMPSCRIPT "$opac" "$npac" || SUCCESS=0
+      if test $SUCCESS -eq 0 -a -z "$check_all"; then
+        echo "differences between $opac and $npac"
         exit 1
-     fi
+      fi
     ;;
   esac
 done
@@ -98,46 +99,56 @@ if [ -n "${NEWRPMS[0]}" ]; then
 fi
 
 # Compare rpmlint.log files
-OTHERDIR=/home/abuild/rpmbuild/OTHER
-
-if test -e $OLDDIR/rpmlint.log -a -e $OTHERDIR/rpmlint.log; then
-  file1=`mktemp`
-  file2=`mktemp`
-  echo "comparing $OLDDIR/rpmlint.log and $OTHERDIR/rpmlint.log"
-  # Sort the files first since the order of messages is not deterministic
-  # Remove release from files
-  sort -u $OLDDIR/rpmlint.log|sed -e "s,$release1,@RELEASE@,g" -e "s|/tmp/rpmlint\..*spec|.spec|g" > $file1
-  sort -u $OTHERDIR/rpmlint.log|sed -e "s,$release2,@RELEASE@,g" -e "s|/tmp/rpmlint\..*spec|.spec|g"  > $file2
-  if ! cmp -s $file1 $file2; then
-    echo "rpmlint.log files differ:"
-    diff -u $file1 $file2 |head -n 20
-    SUCCESS=0
-  fi
-  rm $file1 $file2
-elif test -e $OTHERDIR/rpmlint.log; then
-  echo "rpmlint.log is new"
-  SUCCESS=0
+if test -d /home/abuild/rpmbuild/OTHER; then
+  OTHERDIR=/home/abuild/rpmbuild/OTHER
+elif test -d /usr/src/packages/OTHER; then
+  OTHERDIR=/usr/src/packages/OTHER
+else
+  echo "no OTHERDIR"
+  OTHERDIR=
 fi
 
-appdatas=`cd $OTHERDIR && find . -name *-appdata.xml`
-for xml in $appdatas; do
-  # compare appstream data
-  if test -e $OLDDIR/$xml -a -e $OTHERDIR/$xml; then
-    file1=$OLDDIR/$xml
-    file2=$OTHERDIR/$xml
+if test -n "$OTHERDIR"; then
+  if test -e $OLDDIR/rpmlint.log -a -e $OTHERDIR/rpmlint.log; then
+    file1=`mktemp`
+    file2=`mktemp`
+    echo "comparing $OLDDIR/rpmlint.log and $OTHERDIR/rpmlint.log"
+    # Sort the files first since the order of messages is not deterministic
+    # Remove release from files
+    sort -u $OLDDIR/rpmlint.log|sed -e "s,$ver_rel1,@VERSION@-@RELEASE@,g" -e "s|/tmp/rpmlint\..*spec|.spec|g" > $file1
+    sort -u $OTHERDIR/rpmlint.log|sed -e "s,$ver_rel2,@VERSION@-@RELEASE@,g" -e "s|/tmp/rpmlint\..*spec|.spec|g"  > $file2
     if ! cmp -s $file1 $file2; then
-      echo "$xml files differ:"
-      diff -u0 $file1 $file2 |head -n 20
+      echo "rpmlint.log files differ:"
+      diff -u $file1 $file2 |head -n 20
       SUCCESS=0
     fi
-  elif test -e $OTHERDIR/$xml; then
-    echo "$xml is new"
+    rm $file1 $file2
+  elif test -e $OTHERDIR/rpmlint.log; then
+    echo "rpmlint.log is new"
     SUCCESS=0
   fi
-done
+
+  appdatas=`cd $OTHERDIR && find . -name *-appdata.xml`
+  for xml in $appdatas; do
+    # compare appstream data
+    if test -e $OLDDIR/$xml -a -e $OTHERDIR/$xml; then
+      file1=$OLDDIR/$xml
+      file2=$OTHERDIR/$xml
+      if ! cmp -s $file1 $file2; then
+        echo "$xml files differ:"
+        diff -u0 $file1 $file2 |head -n 20
+        SUCCESS=0
+      fi
+    elif test -e $OTHERDIR/$xml; then
+      echo "$xml is new"
+      SUCCESS=0
+    fi
+  done
+fi
 
 if test $SUCCESS -eq 0; then
   exit 1
 fi
 echo 'compare validated built as identical !'
 exit 0
+# vim: tw=666 ts=2 shiftwidth=2 et

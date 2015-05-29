@@ -1,4 +1,147 @@
 -------------------------------------------------------------------
+Tue Apr 28 11:52:12 UTC 2015 - olaf@aepfle.de
+
+- 2015.04.28
+- Filter InitrdID in /linuxrc.config
+- Hexdump old and new file in parallel
+- Sort cpio file list with files to compare
+- Extract old and new files in parallel
+- Ignore block device nodes
+- Ignore character device nodes
+- Always clean tmpdir on exit in pkg-diff.sh
+- Handle squashfs files
+
+-------------------------------------------------------------------
+Mon Apr 13 08:55:39 UTC 2015 - olaf@aepfle.de
+
+- 2015.04.13
+- Show hint if pkg-diff.sh returns non-zero
+- Adjust intending in same-build-result.sh
+- Handle /usr/src/packages/OTHER
+- Handle "setuid directory"
+
+-------------------------------------------------------------------
+Fri Mar 20 18:58:22 UTC 2015 - olaf@aepfle.de
+
+- 2015.03.20
+- Convert correct png file before comparison
+- Avoid name clashes when comparing png files
+- Handle filename changes gracefully when comparing unknown filetypes
+- Use generic helper to compare png files
+
+-------------------------------------------------------------------
+Thu Feb 12 10:41:45 UTC 2015 - olaf@aepfle.de
+
+- Handle also .o files as ELF relocatable objects
+
+-------------------------------------------------------------------
+Thu Feb 12 08:22:09 UTC 2015 - randy.e.witt@linux.intel.com
+
+- Rename rpm-check.sh to pkg-diff.sh
+
+-------------------------------------------------------------------
+Tue Feb 10 15:35:25 UTC 2015 - olaf@aepfle.de
+
+- 2015.02.10
+- Trim objdump output properly
+- Trim .TH also in localized man pages (bnc#915941)
+- Remove also DVIPSSource from .ps files
+
+-------------------------------------------------------------------
+Tue Feb 10 15:33:32 UTC 2015 - randy.e.witt@linux.intel.com
+
+- Print section differences even if assembly has differences.
+- Add support for nested rpms.
+- Make rpm-check work for "packages" other than rpm.
+- Tell which section was different when doing ELF comparisons.
+- Error when one of the rpms is not found
+
+-------------------------------------------------------------------
+Fri Feb  6 10:35:56 UTC 2015 - olaf@aepfle.de
+
+- 2015.02.06
+- Remove more javadoc references (bnc#916161)
+- Handle *.war files like *.jar files
+- Trim name-version-release string in update-scripts
+
+-------------------------------------------------------------------
+Wed Feb  4 15:53:05 UTC 2015 - olaf@aepfle.de
+
+- 2015.02.04
+- Handle ruby gem files, they are tar archives (bnc#916047)
+- Remove Creator: and CreationDate: tags from .ps files (bnc#915952)
+- Correct regex for hostname in libtool (bnc#916268)
+
+-------------------------------------------------------------------
+Tue Feb  3 11:34:39 UTC 2015 - olaf@aepfle.de
+
+- 2015.02.03
+- Trim .TH also in perl man pages (bnc#915941)
+- Trim first line of man page to catch overly verbose tools
+- Use correct offset for patching mtime out of .pyc files
+- Add BuildIgnore to allow bootstrap in sle11
+
+-------------------------------------------------------------------
+Mon Feb  2 10:05:40 UTC 2015 - olaf@aepfle.de
+
+- 2015.02.02
+- Trim VERSION-RELEASE also in rpmlint log
+- Adjust regex for spec comparing in src.rpm
+- handle also stick and setuid directory from file(1) output
+
+-------------------------------------------------------------------
+Wed Jan 21 08:34:32 UTC 2015 - olaf@aepfle.de
+
+- 2015.01.21
+- Remove leading spaces from file(1) output
+- Force removal of tmpdir to handle files marked as read-only
+
+-------------------------------------------------------------------
+Fri Jan  9 09:37:34 UTC 2015 - olaf@aepfle.de
+
+- 2015.01.14
+- Trim VERSION-RELEASE instead of RELEASE because the release number
+  will match other substrings.
+- Use regex instead  in sed /regex/ to match dots properly
+- Handle plain cpio archives from gfxboot
+- Add patterns for .TH header in man pages to handle all cases
+
+-------------------------------------------------------------------
+Wed Nov 26 08:58:45 UTC 2014 - ohering@suse.de
+
+- 2014.11.25
+- correctly handle cmp_spec return code if file checksum differs
+- handle also bz2 and xz compressed files with odd name
+
+-------------------------------------------------------------------
+Tue Nov 18 11:58:51 UTC 2014 - ohering@suse.de
+
+- 2014.11.15
+- show sorted differences of rpmlint log (bnc#904092)
+- handle kernel and kmp packages, but support for kernel* is disabled
+- minor style fixes
+- handle cpio archives
+- handle absolute symlinks correctly
+- handle all ELF sections, not only the ones starting with dot
+
+-------------------------------------------------------------------
+Wed Nov 12 09:29:24 UTC 2014 - schwab@suse.de
+
+- Use $(...) instead of `...` to avoid losing backslash quoting
+
+-------------------------------------------------------------------
+Fri Nov  7 11:12:10 UTC 2014 - ohering@suse.de
+
+- Update check-all option to really keep going and check all files
+- Add check to recursively look into gzip files with odd suffix
+  to properly handle /usr/share/vlc/skins2/default.vlt
+
+-------------------------------------------------------------------
+Sat Aug  2 19:37:18 UTC 2014 - johannesobermayr@gmx.de
+
+- Fix quoting .
+
+-------------------------------------------------------------------
 Tue Jul 29 15:07:04 UTC 2014 - johannesobermayr@gmx.de
 
 - Remove numbered anchors from all Docbook / HTML files (bnc#889629).
@@ -347,7 +490,7 @@ Mon May 10 09:13:38 UTC 2010 - aj@suse.de
 -------------------------------------------------------------------
 Sat May  8 19:41:30 UTC 2010 - aj@suse.de
 
-- Fix typo in last change - thanks Dirk MГјller.
+- Fix typo in last change - thanks Dirk Müller.
 
 -------------------------------------------------------------------
 Fri May  7 13:05:57 UTC 2010 - aj@suse.de
