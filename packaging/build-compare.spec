@@ -43,6 +43,9 @@ to a former build.
 cp %{SOURCE1001} .
 
 %build
+export CFLAGS+=" -fvisibility=hidden"
+  export CXXFLAGS+=" -fvisibility=hidden"
+  
 
 %install
 mkdir -p $RPM_BUILD_ROOT/usr/lib/build/ $RPM_BUILD_ROOT/%_defaultdocdir/%name
